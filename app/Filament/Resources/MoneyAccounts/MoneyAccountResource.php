@@ -47,7 +47,7 @@ class MoneyAccountResource extends SetupResource
                 ->visible(fn (Get $get) => in_array($get('type'), ['bank', 'investment'], true)),
             MoneyInput::cents('opening_balance_cents', 'Balance at the start (1 January)')
                 ->helperText('The amount in this account when you begin using the system. Locked once entries exist.')
-                ->disabled(fn ($record) => $record?->lines()->exists()),
+                ->disabled(fn ($record) => (bool) $record?->lines()->exists()),
             DatePicker::make('opening_date')->label('Balance as at'),
             Toggle::make('is_active')->label('In use')->default(true),
         ])->columns(2);
@@ -56,7 +56,7 @@ class MoneyAccountResource extends SetupResource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $q) => $q->withSum('lines as movement_cents', 'amount_cents'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->withSum('lines as movement_cents', 'amount_cents'))
             ->columns([
                 TextColumn::make('name')->searchable(),
                 TextColumn::make('type')->badge(),

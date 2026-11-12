@@ -15,6 +15,11 @@ class MoneyBalances extends StatsOverviewWidget
     protected function getStats(): array
     {
         $entity = Filament::getTenant();
+
+        if (! $entity) {
+            return [];
+        }
+
         $inAccounts = $entity->totalInAccountsCents();
         $inFunds = $entity->totalInFundsCents();
         $agree = $inAccounts === $inFunds;

@@ -55,7 +55,7 @@ class TransactionResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $q) => $q->with(['lines.category', 'lines.fund', 'lines.moneyAccount', 'payee', 'reversedBy']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['lines.category', 'lines.fund', 'lines.moneyAccount', 'payee', 'reversedBy']))
             ->defaultSort('seq', 'desc')
             ->columns([
                 TextColumn::make('date')->date('d M Y')->sortable(),
@@ -81,7 +81,7 @@ class TransactionResource extends Resource
                 SelectFilter::make('type')->options(TransactionType::class),
                 Filter::make('date_range')
                     ->schema([DatePicker::make('from')->label('From'), DatePicker::make('until')->label('Until')])
-                    ->query(fn (Builder $q, array $data) => $q
+                    ->query(fn (Builder $query, array $data) => $query
                         ->when($data['from'] ?? null, fn ($q, $d) => $q->whereDate('date', '>=', $d))
                         ->when($data['until'] ?? null, fn ($q, $d) => $q->whereDate('date', '<=', $d))),
             ])

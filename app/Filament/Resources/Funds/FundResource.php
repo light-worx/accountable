@@ -36,7 +36,7 @@ class FundResource extends SetupResource
                 ->unique(ignoreRecord: true, modifyRuleUsing: fn (Unique $rule) => $rule->where('entity_id', Filament::getTenant()->id)),
             MoneyInput::cents('opening_balance_cents', 'Balance at the start (1 January)')
                 ->helperText('Money already held for this fund when you begin. All fund balances must add up to all account balances.')
-                ->disabled(fn ($record) => $record?->lines()->exists()),
+                ->disabled(fn ($record) => (bool) $record?->lines()->exists()),
             Toggle::make('is_active')->label('In use')->default(true)
                 ->disabled(fn ($record) => (bool) $record?->is_general),
         ])->columns(2);
@@ -45,7 +45,7 @@ class FundResource extends SetupResource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $q) => $q->withSum('lines as movement_cents', 'amount_cents'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->withSum('lines as movement_cents', 'amount_cents'))
             ->columns([
                 TextColumn::make('name')->searchable(),
                 TextColumn::make('balance')->label('Balance now')->alignEnd()
