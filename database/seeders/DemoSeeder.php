@@ -19,6 +19,7 @@ class DemoSeeder extends Seeder
             ['email' => 'treasurer@example.test'],
             ['name' => 'Demo Treasurer', 'password' => 'password'],
         );
+        $user->forceFill(['is_admin' => true])->save();
         $society->users()->syncWithoutDetaching([$user->id => ['role' => 'treasurer']]);
         $circuit->users()->syncWithoutDetaching([$user->id => ['role' => 'viewer']]);
 

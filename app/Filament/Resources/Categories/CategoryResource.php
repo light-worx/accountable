@@ -19,6 +19,9 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Validation\Rules\Unique;
+use App\Enums\EntityType;
+use App\Support\Returns\ReturnForms;
+use Filament\Schemas\Components\Utilities\Get;
 
 class CategoryResource extends SetupResource
 {
@@ -35,9 +38,12 @@ class CategoryResource extends SetupResource
                 ->options(CategoryKind::class)->required()->disabledOn('edit'),
             TextInput::make('name')->label('Name')->required()->maxLength(255)
                 ->unique(ignoreRecord: true, modifyRuleUsing: fn (Unique $rule) => $rule->where('entity_id', Filament::getTenant()->id)),
-            TextInput::make('return_line_code')->label('Annual return line (4S / 4C)')
-                ->placeholder('e.g. 3.2.1')->maxLength(20)
-                ->helperText('Which line of the annual return this belongs on. Leave blank if unsure.'),
+            ($returnForm = ReturnForms::for(Filament::getTenant()))
+                ? Select::make('return_line_code')->label('Line on the annual return (' . $returnForm::code() . ')')
+                    ->options(fn (Get $get) => $returnForm::options($get('kind')))
+                    ->searchable()
+                    ->helperText('Where this appears on Schedule ' . $returnForm::code() . '. Leave blank if unsure.')
+                : TextInput::make('return_line_code')->label('Annual return line')->maxLength(20),
             Toggle::make('is_active')->label('In use')->default(true),
         ])->columns(2);
     }
@@ -48,7 +54,8 @@ class CategoryResource extends SetupResource
             ->columns([
                 TextColumn::make('kind')->label('Direction')->badge(),
                 TextColumn::make('name')->searchable(),
-                TextColumn::make('return_line_code')->label('Return line')->placeholder('— not set —'),
+                TextColumn::make('return_line_code')->label('Return line')->placeholder('— not set —')
+                    ->description(fn ($record) => ($f = ReturnForms::for(Filament::getTenant())) ? $f::label($record->return_line_code) : null),
                 IconColumn::make('is_active')->label('In use')->boolean(),
             ])
             ->filters([SelectFilter::make('kind')->options(CategoryKind::class)])

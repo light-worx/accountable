@@ -11,12 +11,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-/** A society, circuit or district. This is the Filament "tenant". */
+/** A society, circuit or district. This is the Filament "tenant". Structure is synced from church.net.za. */
 class Entity extends Model
 {
     use LogsActivity;
 
-    protected $fillable = ['type', 'parent_id', 'name', 'number', 'allow_overdrawn', 'is_active'];
+    protected $fillable = [
+        'type', 'parent_id', 'name', 'number', 'allow_overdrawn', 'is_active',
+        'external_id', 'external_slug', 'synced_at',
+    ];
 
     protected function casts(): array
     {
@@ -24,6 +27,7 @@ class Entity extends Model
             'type' => EntityType::class,
             'allow_overdrawn' => 'boolean',
             'is_active' => 'boolean',
+            'synced_at' => 'datetime',
         ];
     }
 
@@ -34,7 +38,15 @@ class Entity extends Model
 
     public function getActivitylogOptions(): LogOptions
     {
-        return LogOptions::defaults()->logAll()->logOnlyDirty()->dontSubmitEmptyLogs();
+        return LogOptions::defaults()
+            ->logOnly(['type', 'parent_id', 'name', 'number', 'allow_overdrawn', 'is_active', 'external_id', 'external_slug'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
+
+    public function isSynced(): bool
+    {
+        return filled($this->external_id);
     }
 
     public function parent(): BelongsTo
