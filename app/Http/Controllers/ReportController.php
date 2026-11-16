@@ -11,6 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use App\Services\Reports\ReturnSchedule;
 use App\Support\Returns\ReturnForms;
+use App\Enums\EntityType;
+use App\Services\Reports\AssessmentStatements;
 
 class ReportController extends Controller
 {
@@ -82,5 +84,63 @@ class ReportController extends Controller
             ->setOptions(['defaultFont' => 'DejaVu Sans', 'isRemoteEnabled' => false]);
 
         return $pdf->stream(Str::slug($entity->name) . "-{$code}-capture-guide-{$year}.pdf");
+    }
+
+        public function assessmentSummary(Request $request, Entity $entity, string $period, AssessmentStatements $statements, PeriodService $periods)
+    {
+        [$year, $month, $first] = $this->assessmentPeriod($request, $entity, $period);
+
+        $data = $statements->build($entity, $year, $month)
+            ?? abort(404, "There is no approved budget for {$year}, so assessment figures cannot be produced.");
+
+        activity('report')->performedOn($entity)->causedBy($request->user())
+            ->withProperties(['period' => $period])->log('assessment summary generated');
+
+        $pdf = Pdf::loadView('reports.assessment-summary', [
+            'entity' => $entity->loadMissing('parent'),
+            'data' => $data,
+            'closed' => $periods->isClosed($entity, $first),
+            'preparedBy' => $request->user()->name,
+            'preparedAt' => now(),
+        ])->setPaper('a4', 'portrait')->setOptions(['defaultFont' => 'DejaVu Sans', 'isRemoteEnabled' => false]);
+
+        return $pdf->stream(Str::slug($entity->name) . "-assessments-{$period}.pdf");
+    }
+
+    public function assessmentStatement(Request $request, Entity $entity, string $period, string $society, AssessmentStatements $statements, PeriodService $periods)
+    {
+        [$year, $month, $first] = $this->assessmentPeriod($request, $entity, $period);
+
+        $data = $statements->build($entity, $year, $month)
+            ?? abort(404, "There is no approved budget for {$year}, so assessment figures cannot be produced.");
+
+        $row = collect($data['societies'])->first(fn ($s) => (string) $s['external_id'] === $society);
+        abort_unless($row !== null, 404);
+
+        activity('report')->performedOn($entity)->causedBy($request->user())
+            ->withProperties(['period' => $period, 'society' => $row['name']])->log('assessment statement generated');
+
+        $pdf = Pdf::loadView('reports.assessment-statement', [
+            'entity' => $entity->loadMissing('parent'),
+            'data' => $data,
+            's' => $row,
+            'closed' => $periods->isClosed($entity, $first),
+            'preparedBy' => $request->user()->name,
+            'preparedAt' => now(),
+        ])->setPaper('a4', 'portrait')->setOptions(['defaultFont' => 'DejaVu Sans', 'isRemoteEnabled' => false]);
+
+        return $pdf->stream(Str::slug($row['name']) . "-assessment-statement-{$period}.pdf");
+    }
+
+    /** @return array{0:int,1:int,2:CarbonImmutable} year, month and the first day of that month */
+    private function assessmentPeriod(Request $request, Entity $entity, string $period): array
+    {
+        $user = $request->user();
+
+        abort_unless($user && $user->canAccessTenant($entity) && $user->roleIn($entity), 403);
+        abort_unless($entity->type === EntityType::Circuit, 404);
+        abort_unless(preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $period, $m) === 1, 404);
+
+        return [(int) $m[1], (int) $m[2], CarbonImmutable::create((int) $m[1], (int) $m[2], 1)->startOfDay()];
     }
 }

@@ -34,7 +34,13 @@ class PayeeResource extends SetupResource
         return $schema->components([
             TextInput::make('name')->required()->maxLength(255)
                 ->unique(ignoreRecord: true, modifyRuleUsing: fn (Unique $rule) => $rule->where('entity_id', Filament::getTenant()->id)),
-            Select::make('type')->label('Who are they?')->options(PayeeType::class)->required()->default('supplier')->live(),
+            Select::make('type')->label('Who are they?')
+                ->options(fn ($record) => collect(PayeeType::cases())
+                    ->filter(fn (PayeeType $t) => $t !== PayeeType::Society || $record?->type === PayeeType::Society)
+                    ->mapWithKeys(fn (PayeeType $t) => [$t->value => $t->getLabel()])
+                    ->all())
+                ->disabled(fn ($record) => $record?->type === PayeeType::Society)
+                ->required()->default('supplier')->live(),
             TextInput::make('pf_number')->label('PF number')
                 ->visible(fn (Get $get) => FormState::value($get('type')) === 'clergy')
                 ->required(fn (Get $get) => FormState::value($get('type')) === 'clergy')

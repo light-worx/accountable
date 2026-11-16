@@ -8,6 +8,18 @@
             </x-filament::button>
         @endif
 
+        @if ($url = $this->assessmentSummaryUrl())
+            <x-filament::button tag="a" :href="$url" target="_blank" color="gray" icon="heroicon-o-table-cells" size="lg">
+                Open assessment summary
+            </x-filament::button>
+        @endif
+
+        @if ($url = $this->assessmentStatementUrl())
+            <x-filament::button tag="a" :href="$url" target="_blank" color="gray" icon="heroicon-o-document-text" size="lg">
+                Open society statement
+            </x-filament::button>
+        @endif
+
         @if ($url = $this->returnUrl())
             <x-filament::button tag="a" :href="$url" target="_blank" color="gray" icon="heroicon-o-document-text" size="lg">
                 {{ $this->returnLabel() }}

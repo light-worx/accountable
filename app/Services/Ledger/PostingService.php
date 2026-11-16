@@ -16,6 +16,7 @@ use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Payee;
 
 /**
  * The ONLY place that writes to the ledger. Every posted entry is:
@@ -108,7 +109,9 @@ class PostingService
                     throw new PostingException("{$reverses->reference} has already been reversed.");
                 }
             }
-
+            if ($payeeId !== null && ! Payee::where('entity_id', $entity->id)->whereKey($payeeId)->exists()) {
+                throw new PostingException('Please choose a valid person or supplier.');
+            }
             $this->validate($entity, $type, $date, $lines, isReversal: $reverses !== null);
 
             $last = Transaction::where('entity_id', $entity->id)->orderByDesc('seq')->first(['seq', 'hash']);
@@ -195,8 +198,11 @@ class PostingService
                 foreach ($lines as $line) {
                     $category = $categories[$line['category_id'] ?? 0] ?? throw new PostingException('Please choose a category for each amount.');
                     $okKind = $income ? CategoryKind::Income : CategoryKind::Expense;
-                    if ($category->kind !== $okKind || ! $category->is_active) {
+                    if ($category->kind !== $okKind) {
                         throw new PostingException("“{$category->name}” cannot be used here.");
+                    }
+                    if (! $category->is_active) {
+                        throw new PostingException("“{$category->name}” is switched off. Switch it on under Setup → Income & expense types, or choose another.");
                     }
                     if (($income && $line['amount_cents'] < 0) || (! $income && $line['amount_cents'] > 0)) {
                         throw new PostingException('Amounts must be positive.');

@@ -31,6 +31,7 @@
     .warn { color: #b45309; }
     .newpage { page-break-before: always; }
     .sign { margin-top: 22px; border: 1px solid #999; padding: 10px; }
+    tr.src td { font-size: 7.5px; color: #777; padding-top: 0; border-bottom: 0.5px solid #ddd; }
 </style>
 </head>
 <body>

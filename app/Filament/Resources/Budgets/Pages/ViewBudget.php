@@ -18,6 +18,15 @@ class ViewBudget extends ViewRecord
 {
     protected static string $resource = BudgetResource::class;
 
+    public function mount(int|string $record): void
+    {
+        parent::mount($record);
+
+        if ($this->record->status === 'draft' && Access::can('setup')) {
+            app(BudgetService::class)->ensureLines($this->record);
+        }
+    }
+
     protected function getHeaderActions(): array
     {
         return [
@@ -90,4 +99,5 @@ class ViewBudget extends ViewRecord
                 }),
         ];
     }
+
 }

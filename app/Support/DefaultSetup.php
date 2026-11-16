@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Gives a brand-new society / circuit a sensible starting point so a new treasurer
  * never faces an empty screen. Societies and circuits get types linked to their annual return lines.
+ * Only the common types start switched on; the rest are created switched off and can be turned on later.
  */
 final class DefaultSetup
 {
@@ -24,16 +25,11 @@ final class DefaultSetup
                 ['is_general' => true],
             );
 
-            $lists = match ($entity->type) {
-                EntityType::Society => self::society(),
-                EntityType::Circuit => self::circuit(),
-                default => self::generic(),
-            };
-
+            $common = array_flip(self::commonNames($entity->type));
             $now = now();
             $rows = [];
 
-            foreach ($lists as $kind => $items) {
+            foreach (self::listsFor($entity->type) as $kind => $items) {
                 foreach ($items as $i => [$name, $code]) {
                     $rows[] = [
                         'entity_id' => $entity->id,
@@ -41,12 +37,14 @@ final class DefaultSetup
                         'name' => $name,
                         'return_line_code' => $code,
                         'sort_order' => ($i + 1) * 10,
-                        'is_active' => true,
+                        // Types with no "common" list (e.g. districts) all start switched on.
+                        'is_active' => $common === [] || isset($common["{$kind}|{$name}"]),
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];
                 }
             }
+
             // Don't re-add a standard type if the entity already has a type linked to the same return line
             // (for example one the treasurer has renamed to simpler wording).
             $linked = Category::where('entity_id', $entity->id)->whereNotNull('return_line_code')
@@ -55,6 +53,7 @@ final class DefaultSetup
 
             $rows = array_values(array_filter($rows, fn ($r) => $r['return_line_code'] === null
                 || ! in_array($r['kind'] . '|' . $r['return_line_code'], $linked, true)));
+
             Category::insertOrIgnore($rows);
         });
     }
@@ -62,21 +61,102 @@ final class DefaultSetup
     /** @return array<string,string> "kind|name" => line code, used to fill in blanks on existing entities */
     public static function standardCodes(EntityType $type): array
     {
-        $lists = match ($type) {
-            EntityType::Society => self::society(),
-            EntityType::Circuit => self::circuit(),
-            default => [],
-        };
-
         $map = [];
 
-        foreach ($lists as $kind => $items) {
+        foreach (self::listsFor($type) as $kind => $items) {
             foreach ($items as [$name, $code]) {
-                $map["{$kind}|{$name}"] = $code;
+                if ($code !== null) {
+                    $map["{$kind}|{$name}"] = $code;
+                }
             }
         }
 
         return $map;
+    }
+
+    /** @return list<string> "kind|name" of the standard types that start switched on. Empty = everything starts on. */
+    public static function commonNames(EntityType $type): array
+    {
+        $income = CategoryKind::Income->value;
+        $expense = CategoryKind::Expense->value;
+
+        $names = match ($type) {
+            EntityType::Society => [
+                $income => [
+                    'Sunday offerings (cash collections)',
+                    'Pledges / sacrificial giving / tithes',
+                    'Special projects, fundraising & thanksgiving',
+                    'Ministerial Students Fund collections',
+                    'Methodist Childrens Homes (Christmas Day)',
+                    'Rental income (hall, manse)',
+                    'Interest earned',
+                    'Donations & grants – local',
+                    'Other income',
+                ],
+                $expense => [
+                    'Assessment paid to circuit',
+                    'Electricity, water, rates & rent of premises',
+                    'Repairs & maintenance',
+                    'Insurance (MCO property protection)',
+                    'Telephone, cellular & internet',
+                    'Printing, stationery & postage',
+                    'Audit, accounting & bank charges',
+                    'Furniture & equipment acquired',
+                    'Wider Field (tithe to mission)',
+                    'Ministerial Students Fund',
+                    'Methodist Childrens Homes',
+                    'Office staff salaries & wages',
+                    'Other administration expenses',
+                    'Other sundry payments',
+                ],
+            ],
+            EntityType::Circuit => [
+                $income => [
+                    'Assessments received from societies',
+                    'Rental income (hall, manse)',
+                    'Interest earned',
+                    'Donations & grants – local',
+                    'Other income',
+                ],
+                $expense => [
+                    'Basic stipends',
+                    'Additional stipends',
+                    'Housing allowance / rent paid to minister',
+                    'Other allowances to ministers & pastoral staff',
+                    'Travel allowances (ministers)',
+                    'Motor vehicle repairs, insurance & licences',
+                    'Circuit assessments (to the MCO)',
+                    'Medical subsidy',
+                    'Stipend Augmentation Fund (SAF)',
+                    'Supernumerary Fund / reserve contributions',
+                    'Audit, accounting & bank charges',
+                    'Telephone, cellular & internet',
+                    'Printing, stationery & postage',
+                    'Other administration & sundry',
+                    'Other payments to the MCO',
+                ],
+            ],
+            default => [],
+        };
+
+        $out = [];
+
+        foreach ($names as $kind => $list) {
+            foreach ($list as $name) {
+                $out[] = "{$kind}|{$name}";
+            }
+        }
+
+        return $out;
+    }
+
+    private static function listsFor(EntityType $type): array
+    {
+        return match ($type) {
+            EntityType::Society => self::society(),
+            EntityType::Circuit => self::circuit(),
+            default => self::generic(),
+        };
     }
 
     private static function society(): array

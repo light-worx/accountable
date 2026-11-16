@@ -34,7 +34,7 @@ class ReportTest extends TestCase
         return [[
             'money_account_id' => $account->id,
             'fund_id' => $fund->id,
-            'category_id' => $entity->categories()->where('kind', $kind)->first()->id,
+            'category_id' => $entity->categories()->where('kind', $kind)->where('is_active', true)->orderBy('sort_order')->first()->id,
             'amount_cents' => $kind === 'income' ? $cents : -$cents,
         ]];
     }

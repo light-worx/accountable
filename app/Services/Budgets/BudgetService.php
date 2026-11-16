@@ -257,7 +257,8 @@ class BudgetService
 
             $this->syncAssessmentLine($budget);
         });
-
+        // Every society is also made available to record payments against (existing entries are left alone).
+        app(SocietyPayees::class)->ensure($entity, $societies);
         if ($added > 0) {
             activity('budget')->performedOn($budget)->causedBy($user)
                 ->withProperties(['added' => $added])->log('societies added to the assessment schedule');
@@ -360,6 +361,24 @@ class BudgetService
                 + $this->monthColumns($seed[$category->id] ?? array_fill(0, 12, 0))
             );
         }
+    }
+
+        /** Adds a zero line for any type switched on since the draft was started. */
+    public function ensureLines(Budget $budget): void
+    {
+        if ($budget->status !== 'draft') {
+            return;
+        }
+
+        $have = $budget->lines()->pluck('category_id')->all();
+
+        Category::where('entity_id', $budget->entity_id)
+            ->where('is_active', true)
+            ->whereNotIn('id', $have)
+            ->get()
+            ->each(fn (Category $c) => BudgetLine::create(
+                ['budget_id' => $budget->id, 'category_id' => $c->id] + $this->monthColumns(array_fill(0, 12, 0))
+            ));
     }
 
     /** @return array<string,int> m1..m12 => cents */

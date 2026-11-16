@@ -39,7 +39,7 @@ class LedgerTest extends TestCase
     {
         return [[
             'money_account_id' => $account->id, 'fund_id' => $fund->id,
-            'category_id' => $entity->categories()->where('kind', 'income')->first()->id, 'amount_cents' => $cents,
+            'category_id' => $entity->categories()->where('kind', 'income')->where('is_active', true)->orderBy('sort_order')->first()->id, 'amount_cents' => $cents,
         ]];
     }
 
@@ -47,7 +47,7 @@ class LedgerTest extends TestCase
     {
         return [[
             'money_account_id' => $account->id, 'fund_id' => $fund->id,
-            'category_id' => $entity->categories()->where('kind', 'expense')->first()->id, 'amount_cents' => -$cents,
+            'category_id' => $entity->categories()->where('kind', 'expense')->where('is_active', true)->orderBy('sort_order')->first()->id, 'amount_cents' => -$cents,
         ]];
     }
 

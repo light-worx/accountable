@@ -32,6 +32,7 @@ class ReturnScheduleTest extends TestCase
     private function pay($entity, $user, $account, $fund, string $name, int $cents, string $date, ?int $payeeId = null): void
     {
         $category = $entity->categories()->where('name', $name)->firstOrFail();
+        $category->update(['is_active' => true]);
         $income = $category->kind->value === 'income';
 
         app(PostingService::class)->post(

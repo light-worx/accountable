@@ -10,6 +10,7 @@ enum PayeeType: string implements HasLabel
     case Clergy = 'clergy';
     case Organisation = 'organisation';
     case Person = 'person';
+    case Society = 'society';
 
     public function getLabel(): string
     {
@@ -18,6 +19,7 @@ enum PayeeType: string implements HasLabel
             self::Clergy => 'Minister / pastoral staff',
             self::Organisation => 'Church body / organisation',
             self::Person => 'Other person',
+            self::Society => 'Society (circuit assessments)',
         };
     }
 }

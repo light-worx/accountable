@@ -2,6 +2,8 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\EntityType;
+use App\Services\Budgets\BudgetService;
 use App\Support\Returns\ReturnForms;
 use BackedEnum;
 use Carbon\CarbonImmutable;
@@ -9,6 +11,8 @@ use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
@@ -30,10 +34,12 @@ class Reports extends Page implements HasSchemas
     public function mount(): void
     {
         $now = CarbonImmutable::now();
+        $lastMonth = $now->startOfMonth()->subMonth()->format('Y-m');
 
         $this->form->fill([
-            'period' => $now->startOfMonth()->subMonth()->format('Y-m'),
+            'period' => $lastMonth,
             'year' => $now->year - 1, // the year just ended
+            'assess_period' => $lastMonth,
         ]);
     }
 
@@ -45,6 +51,18 @@ class Reports extends Page implements HasSchemas
                 ->schema([
                     Select::make('period')->label('Which period?')
                         ->options(fn () => static::periodOptions())->required()->live(),
+                ]),
+
+            Section::make('Society assessments')
+                ->description('How much each society should have paid the circuit, how much it has paid, and what is still owing, from the approved budget.')
+                ->visible(fn () => Filament::getTenant()?->type === EntityType::Circuit)
+                ->schema([
+                    Select::make('assess_period')->label('Up to which month?')
+                        ->options(fn () => static::monthOptions())->required()->live()
+                        ->afterStateUpdated(fn (Set $set) => $set('assess_society', null)),
+                    Select::make('assess_society')->label('Statement for one society (optional)')
+                        ->options(fn (Get $get) => static::societyOptions($get('assess_period')))
+                        ->searchable()->live(),
                 ]),
 
             Section::make(fn () => 'Annual return – Schedule ' . (($f = ReturnForms::for(Filament::getTenant())) ? $f::code() : ''))
@@ -82,7 +100,38 @@ class Reports extends Page implements HasSchemas
         return 'Open ' . ($form ? $form::code() : '') . ' capture guide';
     }
 
+    public function assessmentSummaryUrl(): ?string
+    {
+        $period = $this->data['assess_period'] ?? null;
+
+        return ($period && Filament::getTenant()?->type === EntityType::Circuit)
+            ? route('reports.assessments', ['entity' => Filament::getTenant()->id, 'period' => $period])
+            : null;
+    }
+
+    public function assessmentStatementUrl(): ?string
+    {
+        $period = $this->data['assess_period'] ?? null;
+        $society = $this->data['assess_society'] ?? null;
+
+        return ($period && $society && Filament::getTenant()?->type === EntityType::Circuit)
+            ? route('reports.assessments.society', ['entity' => Filament::getTenant()->id, 'period' => $period, 'society' => $society])
+            : null;
+    }
+
     private static function periodOptions(): array
+    {
+        $now = CarbonImmutable::now()->startOfMonth();
+        $options = static::monthOptions();
+
+        foreach ([$now->year, $now->year - 1, $now->year - 2] as $year) {
+            $options["year-{$year}"] = "Whole year {$year}";
+        }
+
+        return $options;
+    }
+
+    private static function monthOptions(): array
     {
         $now = CarbonImmutable::now()->startOfMonth();
         $options = [];
@@ -90,10 +139,6 @@ class Reports extends Page implements HasSchemas
         foreach (range(0, 23) as $i) {
             $month = $now->subMonths($i);
             $options[$month->format('Y-m')] = $month->format('F Y');
-        }
-
-        foreach ([$now->year, $now->year - 1, $now->year - 2] as $year) {
-            $options["year-{$year}"] = "Whole year {$year}";
         }
 
         return $options;
@@ -104,5 +149,21 @@ class Reports extends Page implements HasSchemas
         $year = CarbonImmutable::now()->year;
 
         return collect(range($year, $year - 4))->mapWithKeys(fn ($y) => [$y => (string) $y])->all();
+    }
+
+    /** The societies in the approved budget for the chosen month's year. */
+    private static function societyOptions(?string $period): array
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant || ! $period || ! preg_match('/^(\d{4})-/', $period, $m)) {
+            return [];
+        }
+
+        $budget = app(BudgetService::class)->current($tenant, (int) $m[1]);
+
+        return $budget
+            ? $budget->assessments()->orderBy('society_name')->pluck('society_name', 'society_external_id')->all()
+            : [];
     }
 }

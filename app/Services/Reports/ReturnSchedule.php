@@ -41,8 +41,10 @@ class ReturnSchedule
         [$priorByCat] = $this->aggregate($this->sums($entity, $year - 1), $categories);
 
         $issues = [];
-        $incomeCodes = $this->codeAmounts($categories, $byCat, 'income', $form, $issues);
-        $expenseCodes = $this->codeAmounts($categories, $byCat, 'expense', $form, $issues);
+        $incomeSources = [];
+        $expenseSources = [];
+        $incomeCodes = $this->codeAmounts($categories, $byCat, 'income', $form, $issues, $incomeSources);
+        $expenseCodes = $this->codeAmounts($categories, $byCat, 'expense', $form, $issues, $expenseSources);
         $priorIncome = $this->codeAmounts($categories, $priorByCat, 'income', $form);
         $priorExpense = $this->codeAmounts($categories, $priorByCat, 'expense', $form);
 
@@ -137,8 +139,8 @@ class ReturnSchedule
             'from' => $from,
             'to' => $to,
             'prior_has_data' => $priorIncome !== [] || $priorExpense !== [],
-            'income' => ['rows' => $this->render($form::incomeLayout(), $form, $incomeCodes, $priorIncome), 'total' => $incomeTotal, 'prior' => array_sum($priorIncome)],
-            'expenditure' => ['rows' => $this->render($form::expenditureLayout(), $form, $expenseCodes, $priorExpense), 'total' => $expenseTotal, 'prior' => array_sum($priorExpense)],
+            'income' => ['rows' => $this->render($form::incomeLayout(), $form, $incomeCodes, $priorIncome, $incomeSources), 'total' => $incomeTotal, 'prior' => array_sum($priorIncome)],
+            'expenditure' => ['rows' => $this->render($form::expenditureLayout(), $form, $expenseCodes, $priorExpense, $expenseSources), 'total' => $expenseTotal, 'prior' => array_sum($priorExpense)],
             'surplus' => $incomeTotal - $expenseTotal,
             'continuation' => $continuation,
             'gifts' => $gifts,
@@ -187,8 +189,8 @@ class ReturnSchedule
         return [$byCat, $byCatPayee];
     }
 
-    /** @return array<string,int> line code => amount. Anything not linked to a valid line is reported in $issues. */
-    private function codeAmounts(Collection $categories, array $byCat, string $kind, string $form, ?array &$issues = null): array
+        /** @return array<string,int> line code => amount. Anything not linked to a valid line is reported in $issues. */
+    private function codeAmounts(Collection $categories, array $byCat, string $kind, string $form, ?array &$issues = null, ?array &$sources = null): array
     {
         $valid = $kind === 'income' ? $form::income() : $form::expenditure();
         $amounts = [];
@@ -211,12 +213,16 @@ class ReturnSchedule
             }
 
             $amounts[$code] = ($amounts[$code] ?? 0) + $value;
+
+            if ($sources !== null) {
+                $sources[$code][] = ['name' => $c->name, 'amount' => $value];
+            }
         }
 
         return $amounts;
     }
 
-    private function render(array $layout, string $form, array $amounts, array $prior): array
+    private function render(array $layout, string $form, array $amounts, array $prior, array $sources = []): array
     {
         $rows = [];
 
@@ -227,6 +233,8 @@ class ReturnSchedule
                 $rows[] = [
                     'type' => 'line', 'code' => $item[1], 'label' => $form::label($item[1]),
                     'amount' => $amounts[$item[1]] ?? 0, 'prior' => $prior[$item[1]] ?? 0,
+                    // Only worth showing when more than one of the society's own types feeds this line.
+                    'sources' => count($sources[$item[1]] ?? []) > 1 ? $sources[$item[1]] : [],
                 ];
             } else {
                 $rows[] = [

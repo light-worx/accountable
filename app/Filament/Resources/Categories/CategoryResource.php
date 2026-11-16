@@ -20,6 +20,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Validation\Rules\Unique;
 use App\Enums\EntityType;
+use Filament\Tables\Filters\TernaryFilter;
 use App\Support\FormState;
 use App\Support\Returns\ReturnForms;
 use Filament\Schemas\Components\Utilities\Get;
@@ -59,7 +60,12 @@ class CategoryResource extends SetupResource
                     ->description(fn ($record) => ($f = ReturnForms::for(Filament::getTenant())) ? $f::label($record->return_line_code) : null),
                 IconColumn::make('is_active')->label('In use')->boolean(),
             ])
-            ->filters([SelectFilter::make('kind')->options(CategoryKind::class)])
+            ->filters([
+                SelectFilter::make('kind')->options(CategoryKind::class),
+                TernaryFilter::make('is_active')->label('Show')
+                    ->placeholder('All')->trueLabel('In use')->falseLabel('Not in use')
+                    ->default(true),
+            ])
             ->recordActions([EditAction::make()->modalHeading('Edit type')])
             ->defaultSort('sort_order')
             ->defaultGroup('kind');
