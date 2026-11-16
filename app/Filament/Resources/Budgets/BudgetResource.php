@@ -17,6 +17,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
+use App\Filament\Resources\Budgets\RelationManagers\AssessmentsRelationManager;
 
 /** Budgets are created and changed through the buttons on these pages: never by editing a record directly. */
 class BudgetResource extends Resource
@@ -97,7 +98,7 @@ class BudgetResource extends Resource
 
     public static function getRelations(): array
     {
-        return [LinesRelationManager::class];
+        return [LinesRelationManager::class, AssessmentsRelationManager::class];
     }
 
     public static function getPages(): array

@@ -2,16 +2,20 @@
 
 namespace App\Services\Budgets;
 
+use App\Enums\EntityType;
 use App\Models\Budget;
+use App\Models\BudgetAssessment;
 use App\Models\BudgetLine;
 use App\Models\Category;
 use App\Models\Entity;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
- * Creating, approving and versioning budgets, and reading the approved budget for reports.
- * Only the treasurer can change budgets. Approved budgets are never edited: a change is a new version.
+ * Creating, approving and versioning budgets, per-society assessments for circuits, and reading the
+ * approved budget for reports. Only the treasurer can change budgets. Approved budgets are never edited:
+ * a change is a new version.
  */
 class BudgetService
 {
@@ -43,6 +47,21 @@ class BudgetService
         return $sums;
     }
 
+    /** The income type that holds assessments received from societies (line 3.1). Circuits only. */
+    public function assessmentCategory(Entity $entity): ?Category
+    {
+        if ($entity->type !== EntityType::Circuit) {
+            return null;
+        }
+
+        return Category::where('entity_id', $entity->id)
+            ->where('kind', 'income')
+            ->where('return_line_code', '3.1')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->first();
+    }
+
     /** @param 'blank'|'actuals'|'copy' $startFrom */
     public function create(Entity $entity, User $user, int $year, string $startFrom): Budget
     {
@@ -61,9 +80,11 @@ class BudgetService
                 throw new BudgetException("The {$year} budget is already approved. Open it and choose “Change this budget” to make a new version.");
             }
 
+            $previous = $startFrom === 'copy' ? $this->previousBudget($entity, $year - 1) : null;
+
             $seed = match ($startFrom) {
                 'actuals' => array_map(fn (int $cents) => Budget::spread($cents), $this->actualsFor($entity, $year - 1)),
-                'copy' => $this->previousBudgetMonths($entity, $year - 1),
+                'copy' => $this->monthsOf($previous),
                 default => [],
             };
 
@@ -76,6 +97,11 @@ class BudgetService
             ]);
 
             $this->createLines($budget, $seed);
+
+            if ($previous) {
+                $this->copyAssessments($previous, $budget);
+                $this->syncAssessmentLine($budget);
+            }
 
             activity('budget')->performedOn($budget)->causedBy($user)
                 ->withProperties(['year' => $year, 'version' => $budget->version, 'start_from' => $startFrom])
@@ -152,7 +178,9 @@ class BudgetService
                 'created_by' => $user->id,
             ]);
 
-            $this->createLines($budget, $current->lines()->get()->mapWithKeys(fn (BudgetLine $l) => [$l->category_id => $l->months()])->all());
+            $this->createLines($budget, $this->monthsOf($current));
+            $this->copyAssessments($current, $budget);
+            $this->syncAssessmentLine($budget);
 
             activity('budget')->performedOn($budget)->causedBy($user)
                 ->withProperties(['year' => $budget->year, 'version' => $budget->version, 'reason' => trim($reason)])
@@ -177,12 +205,147 @@ class BudgetService
 
             $info = ['year' => $fresh->year, 'version' => $fresh->version];
 
+            $fresh->assessments()->get()->each(fn (BudgetAssessment $row) => $row->delete());
             $fresh->lines()->get()->each(fn (BudgetLine $line) => $line->delete());
             $fresh->delete();
 
             activity('budget')->causedBy($user)->withProperties($info)->log('draft budget discarded');
         });
     }
+
+    // ---- Per-society assessments (circuit budgets) ----
+
+    /**
+     * Adds societies that are not already in the budget, with zero amounts. Nothing existing is changed.
+     *
+     * @param  list<array{id:string,slug:?string,name:string,email:?string}>  $societies
+     * @return int how many were added
+     */
+    public function addSocieties(Budget $budget, User $user, array $societies): int
+    {
+        $this->requireDraftTreasurer($budget, $user);
+
+        $entity = Entity::findOrFail($budget->entity_id);
+
+        if (! $this->assessmentCategory($entity)) {
+            throw new BudgetException('This circuit has no income type linked to line 3.1 (assessments received). Link one under Setup → Income & expense types first.');
+        }
+
+        $added = 0;
+
+        DB::transaction(function () use ($budget, $societies, &$added) {
+            $existing = $budget->assessments()->pluck('society_external_id')->map(fn ($id) => (string) $id)->all();
+
+            foreach ($societies as $society) {
+                $id = (string) $society['id'];
+
+                if (in_array($id, $existing, true)) {
+                    continue;
+                }
+
+                BudgetAssessment::create([
+                    'budget_id' => $budget->id,
+                    'society_external_id' => $id,
+                    'society_slug' => $society['slug'] ?? null,
+                    'society_name' => $society['name'],
+                    'society_email' => $society['email'] ?? null,
+                ]);
+
+                $existing[] = $id;
+                $added++;
+            }
+
+            $this->syncAssessmentLine($budget);
+        });
+
+        if ($added > 0) {
+            activity('budget')->performedOn($budget)->causedBy($user)
+                ->withProperties(['added' => $added])->log('societies added to the assessment schedule');
+        }
+
+        return $added;
+    }
+
+    /** @param list<int> $months 12 monthly amounts in cents */
+    public function setAssessment(Budget $budget, User $user, string $societyExternalId, array $months): void
+    {
+        $this->requireDraftTreasurer($budget, $user);
+
+        $months = array_values($months);
+
+        if (count($months) !== 12) {
+            throw new InvalidArgumentException('An assessment needs exactly 12 monthly amounts.');
+        }
+
+        if (min($months) < 0) {
+            throw new BudgetException('Amounts cannot be negative.');
+        }
+
+        DB::transaction(function () use ($budget, $user, $societyExternalId, $months) {
+            $row = BudgetAssessment::where(['budget_id' => $budget->id, 'society_external_id' => $societyExternalId])->first()
+                ?? throw new BudgetException('That society is not in this budget.');
+
+            $row->update($this->monthColumns($months));
+            $this->syncAssessmentLine($budget);
+
+            activity('budget')->performedOn($budget)->causedBy($user)
+                ->withProperties(['society' => $row->society_name, 'annual' => array_sum($months)])
+                ->log('society assessment set');
+        });
+    }
+
+    public function removeAssessment(Budget $budget, User $user, string $societyExternalId): void
+    {
+        $this->requireDraftTreasurer($budget, $user);
+
+        DB::transaction(function () use ($budget, $user, $societyExternalId) {
+            $row = BudgetAssessment::where(['budget_id' => $budget->id, 'society_external_id' => $societyExternalId])->first()
+                ?? throw new BudgetException('That society is not in this budget.');
+
+            $name = $row->society_name;
+            $row->delete();
+            $this->syncAssessmentLine($budget);
+
+            activity('budget')->performedOn($budget)->causedBy($user)
+                ->withProperties(['society' => $name])->log('society removed from the assessment schedule');
+        });
+    }
+
+    /** Makes the 3.1 line the total of the society rows, month by month. Leaves it alone when there are no rows. */
+    private function syncAssessmentLine(Budget $budget): void
+    {
+        $category = $this->assessmentCategory(Entity::findOrFail($budget->entity_id));
+        $rows = $budget->assessments()->get();
+
+        if (! $category || $rows->isEmpty()) {
+            return;
+        }
+
+        $sums = array_fill(0, 12, 0);
+
+        foreach ($rows as $row) {
+            foreach ($row->months() as $i => $cents) {
+                $sums[$i] += $cents;
+            }
+        }
+
+        $line = BudgetLine::firstOrNew(['budget_id' => $budget->id, 'category_id' => $category->id]);
+        $line->fill($this->monthColumns($sums))->save();
+    }
+
+    private function copyAssessments(Budget $from, Budget $to): void
+    {
+        $keys = array_merge(
+            ['society_external_id', 'society_slug', 'society_name', 'society_email'],
+            array_map(fn ($m) => "m{$m}", range(1, 12)),
+        );
+
+        foreach ($from->assessments()->get() as $row) {
+            BudgetAssessment::create(['budget_id' => $to->id] + $row->only($keys));
+        }
+    }
+
+    // ---- Helpers ----
 
     /** @param array<int,list<int>> $seed category id => 12 monthly amounts */
     private function createLines(Budget $budget, array $seed): void
@@ -192,13 +355,23 @@ class BudgetService
             ->get();
 
         foreach ($categories as $category) {
-            $months = $seed[$category->id] ?? array_fill(0, 12, 0);
-
             BudgetLine::create(
                 ['budget_id' => $budget->id, 'category_id' => $category->id]
-                + array_combine(array_map(fn ($m) => "m{$m}", range(1, 12)), $months)
+                + $this->monthColumns($seed[$category->id] ?? array_fill(0, 12, 0))
             );
         }
+    }
+
+    /** @return array<string,int> m1..m12 => cents */
+    private function monthColumns(array $months): array
+    {
+        return array_combine(array_map(fn ($m) => "m{$m}", range(1, 12)), array_values($months));
+    }
+
+    /** @return array<int,list<int>> category id => 12 monthly amounts */
+    private function monthsOf(Budget $budget): array
+    {
+        return $budget->lines()->get()->mapWithKeys(fn (BudgetLine $l) => [$l->category_id => $l->months()])->all();
     }
 
     /** @return array<int,int> category id => what was actually received / paid in the year (positive amounts only) */
@@ -226,23 +399,26 @@ class BudgetService
         return $actuals;
     }
 
-    /** @return array<int,list<int>> category id => 12 monthly amounts, from last year's budget */
-    private function previousBudgetMonths(Entity $entity, int $year): array
+    private function previousBudget(Entity $entity, int $year): Budget
     {
-        $previous = Budget::where(['entity_id' => $entity->id, 'year' => $year, 'status' => 'approved'])->orderByDesc('version')->first()
-            ?? Budget::where(['entity_id' => $entity->id, 'year' => $year])->orderByDesc('version')->first();
-
-        if (! $previous) {
-            throw new BudgetException("There is no {$year} budget to copy.");
-        }
-
-        return $previous->lines()->get()->mapWithKeys(fn (BudgetLine $l) => [$l->category_id => $l->months()])->all();
+        return Budget::where(['entity_id' => $entity->id, 'year' => $year, 'status' => 'approved'])->orderByDesc('version')->first()
+            ?? Budget::where(['entity_id' => $entity->id, 'year' => $year])->orderByDesc('version')->first()
+            ?? throw new BudgetException("There is no {$year} budget to copy.");
     }
 
     private function requireTreasurer(Entity $entity, User $user): void
     {
         if (! $user->roleIn($entity)?->can('setup')) {
             throw new BudgetException('Only the treasurer can change budgets.');
+        }
+    }
+
+    private function requireDraftTreasurer(Budget $budget, User $user): void
+    {
+        $this->requireTreasurer(Entity::findOrFail($budget->entity_id), $user);
+
+        if (Budget::whereKey($budget->id)->value('status') !== 'draft') {
+            throw new BudgetException('This budget is approved, so it cannot be changed. Make a new version first.');
         }
     }
 }

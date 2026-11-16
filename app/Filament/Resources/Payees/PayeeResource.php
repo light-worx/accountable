@@ -19,6 +19,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Validation\Rules\Unique;
+use App\Support\FormState;
 
 class PayeeResource extends SetupResource
 {
@@ -35,11 +36,11 @@ class PayeeResource extends SetupResource
                 ->unique(ignoreRecord: true, modifyRuleUsing: fn (Unique $rule) => $rule->where('entity_id', Filament::getTenant()->id)),
             Select::make('type')->label('Who are they?')->options(PayeeType::class)->required()->default('supplier')->live(),
             TextInput::make('pf_number')->label('PF number')
-                ->visible(fn (Get $get) => $get('type') === 'clergy')
-                ->required(fn (Get $get) => $get('type') === 'clergy')
+                ->visible(fn (Get $get) => FormState::value($get('type')) === 'clergy')
+                ->required(fn (Get $get) => FormState::value($get('type')) === 'clergy')
                 ->helperText('Needed for the annual return (4S Section 8).'),
             Toggle::make('in_our_circuit')->label('Based in our circuit')->default(true)
-                ->visible(fn (Get $get) => $get('type') === 'clergy'),
+                ->visible(fn (Get $get) => FormState::value($get('type')) === 'clergy'),
             Toggle::make('is_active')->label('In use')->default(true),
         ])->columns(2);
     }

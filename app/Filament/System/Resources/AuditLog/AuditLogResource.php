@@ -65,6 +65,8 @@ class AuditLogResource extends Resource
             ->filters([
                 SelectFilter::make('log_name')->label('Area')->options([
                     'access' => 'People & access',
+                    'contacts' => 'Contact details',
+                    'budget' => 'Budgets',
                     'ledger' => 'Ledger entries',
                     'sync' => 'Directory sync',
                     'default' => 'Setup changes',

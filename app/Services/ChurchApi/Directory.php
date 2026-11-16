@@ -76,7 +76,7 @@ class Directory
         });
     }
 
-    private function societies(string $circuitId): array
+    public function societies(string $circuitId): array
     {
         return Cache::remember("church_api.societies.{$circuitId}", now()->addHour(), function () use ($circuitId) {
             $circuit = $this->circuit($circuitId);
@@ -91,7 +91,7 @@ class Directory
                     continue;
                 }
 
-                $societies[$id] = ['id' => $id, 'slug' => $this->text($s['slug'] ?? null), 'name' => $name];
+                $societies[$id] = ['id' => $id, 'slug' => $this->text($s['slug'] ?? null), 'name' => $name, 'email' => $this->text($s['email'] ?? null)];
             }
 
             uasort($societies, fn ($a, $b) => strcasecmp($a['name'], $b['name']));

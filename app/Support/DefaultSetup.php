@@ -47,7 +47,14 @@ final class DefaultSetup
                     ];
                 }
             }
+            // Don't re-add a standard type if the entity already has a type linked to the same return line
+            // (for example one the treasurer has renamed to simpler wording).
+            $linked = Category::where('entity_id', $entity->id)->whereNotNull('return_line_code')
+                ->get(['kind', 'return_line_code'])
+                ->map(fn ($c) => $c->kind->value . '|' . $c->return_line_code)->all();
 
+            $rows = array_values(array_filter($rows, fn ($r) => $r['return_line_code'] === null
+                || ! in_array($r['kind'] . '|' . $r['return_line_code'], $linked, true)));
             Category::insertOrIgnore($rows);
         });
     }

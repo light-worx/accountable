@@ -23,6 +23,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rules\Unique;
+use App\Support\FormState;
 
 class MoneyAccountResource extends SetupResource
 {
@@ -42,9 +43,9 @@ class MoneyAccountResource extends SetupResource
             Select::make('type')->label('What kind of account is it?')
                 ->options(MoneyAccountType::class)->required()->live(),
             TextInput::make('bank_name')->label('Bank')
-                ->visible(fn (Get $get) => in_array($get('type'), ['bank', 'investment'], true)),
+                ->visible(fn (Get $get) => in_array(FormState::value($get('type')), ['bank', 'investment'], true)),
             TextInput::make('account_number')->label('Account number')
-                ->visible(fn (Get $get) => in_array($get('type'), ['bank', 'investment'], true)),
+                ->visible(fn (Get $get) => in_array(FormState::value($get('type')), ['bank', 'investment'], true)),
             MoneyInput::cents('opening_balance_cents', 'Balance at the start (1 January)')
                 ->helperText('The amount in this account when you begin using the system. Locked once entries exist.')
                 ->disabled(fn ($record) => (bool) $record?->lines()->exists()),

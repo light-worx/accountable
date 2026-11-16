@@ -112,6 +112,18 @@ class ReturnScheduleTest extends TestCase
         $this->assertTrue($d['ready']);
     }
 
+    public function test_renamed_types_are_not_duplicated_when_defaults_are_reapplied(): void
+    {
+        [$entity] = $this->entity('society');
+        $before = $entity->categories()->count();
+
+        $entity->categories()->where('name', 'Sunday offerings (cash collections)')->update(['name' => 'Sunday plate']);
+        \App\Support\DefaultSetup::apply($entity);
+
+        $this->assertSame($before, $entity->categories()->count());
+        $this->assertSame(1, $entity->categories()->where('return_line_code', '3.2.2')->count());
+    }
+
     public function test_unlinked_types_and_missing_pf_numbers_are_flagged(): void
     {
         [$entity, $user, $account, $fund] = $this->entity('society');

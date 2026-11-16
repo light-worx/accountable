@@ -65,6 +65,11 @@ class Budget extends Model
         return $this->hasMany(BudgetLine::class);
     }
 
+    public function assessments(): HasMany
+    {
+        return $this->hasMany(BudgetAssessment::class);
+    }
+
     /** @return array{income:int, expense:int, surplus:int} annual totals */
     public function totals(): array
     {

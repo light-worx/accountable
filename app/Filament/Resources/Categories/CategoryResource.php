@@ -20,6 +20,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Validation\Rules\Unique;
 use App\Enums\EntityType;
+use App\Support\FormState;
 use App\Support\Returns\ReturnForms;
 use Filament\Schemas\Components\Utilities\Get;
 
@@ -40,7 +41,7 @@ class CategoryResource extends SetupResource
                 ->unique(ignoreRecord: true, modifyRuleUsing: fn (Unique $rule) => $rule->where('entity_id', Filament::getTenant()->id)),
             ($returnForm = ReturnForms::for(Filament::getTenant()))
                 ? Select::make('return_line_code')->label('Line on the annual return (' . $returnForm::code() . ')')
-                    ->options(fn (Get $get) => $returnForm::options($get('kind')))
+                    ->options(fn (Get $get) => $returnForm::options(FormState::value($get('kind'))))
                     ->searchable()
                     ->helperText('Where this appears on Schedule ' . $returnForm::code() . '. Leave blank if unsure.')
                 : TextInput::make('return_line_code')->label('Annual return line')->maxLength(20),
