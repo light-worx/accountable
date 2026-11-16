@@ -22,9 +22,32 @@ class PeriodService
         return $last?->action === 'close';
     }
 
+    /** @return list<string> "Y-m" of the months that are closed right now, newest first */
+    public function closedMonths(Entity $entity): array
+    {
+        $latest = [];
+
+        foreach (PeriodEvent::where('entity_id', $entity->id)->orderBy('id')->get(['year', 'month', 'action']) as $event) {
+            $latest[sprintf('%04d-%02d', $event->year, $event->month)] = $event->action;
+        }
+
+        $closed = array_keys(array_filter($latest, fn ($action) => $action === 'close'));
+        rsort($closed);
+
+        return $closed;
+    }
+
     public function close(Entity $entity, User $user, int $year, int $month): PeriodEvent
     {
         $this->authorize($entity, $user);
+
+        if (in_array(sprintf('%04d-%02d', $year, $month), $this->closedMonths($entity), true)) {
+            throw new PostingException('That month is already closed.');
+        }
+
+        if ($entity->totalInAccountsCents() !== $entity->totalInFundsCents()) {
+            throw new PostingException('Bank and cash balances do not agree with fund balances, so the month cannot be closed yet. Check the opening balances first.');
+        }
 
         return $this->record($entity, $user, $year, $month, 'close', null);
     }
@@ -32,6 +55,10 @@ class PeriodService
     public function reopen(Entity $entity, User $user, int $year, int $month, string $reason): PeriodEvent
     {
         $this->authorize($entity, $user);
+
+        if (! in_array(sprintf('%04d-%02d', $year, $month), $this->closedMonths($entity), true)) {
+            throw new PostingException('That month is not closed.');
+        }
 
         if (mb_strlen(trim($reason)) < 5) {
             throw new PostingException('Please give a reason for reopening this month.');

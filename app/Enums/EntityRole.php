@@ -26,7 +26,7 @@ enum EntityRole: string implements HasLabel
     {
         return match ($ability) {
             'capture' => in_array($this, [self::Treasurer, self::Capturer], true),
-            'setup', 'reverse', 'close' => $this === self::Treasurer,
+            'setup', 'reverse', 'close', 'send' => $this === self::Treasurer,
             default => false,
         };
     }

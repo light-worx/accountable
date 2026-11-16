@@ -12,7 +12,7 @@ class Payee extends Model
 {
     use LogsActivity;
 
-    protected $fillable = ['entity_id', 'name', 'type', 'pf_number', 'in_our_circuit', 'is_active'];
+    protected $fillable = ['entity_id', 'name', 'type', 'pf_number', 'in_our_circuit', 'is_active', 'society_external_id'];
 
     protected function casts(): array
     {
