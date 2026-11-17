@@ -75,7 +75,7 @@ class SendAssessmentStatement implements ShouldQueue
             ],
             pdf: $documents->statementPdf($circuit, $data, $society, $closed, $senderName),
             filename: Str::slug($society['name']) . '-assessment-statement-' . sprintf('%04d-%02d', $send->year, $send->month) . '.pdf',
-            replyTo: $sender?->email,
+            replyToEmail: $sender?->email,
             senderName: $senderName,
         );
 

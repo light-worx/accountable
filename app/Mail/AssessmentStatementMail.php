@@ -19,7 +19,7 @@ class AssessmentStatementMail extends Mailable
         public array $summary,
         public string $pdf,
         public string $filename,
-        public ?string $replyTo,
+        public ?string $replyToEmail,
         public string $senderName,
     ) {
     }
@@ -28,7 +28,7 @@ class AssessmentStatementMail extends Mailable
     {
         return new Envelope(
             subject: $this->subjectLine,
-            replyTo: $this->replyTo ? [new Address($this->replyTo, $this->senderName)] : [],
+            replyTo: $this->replyToEmail ? [new Address($this->replyToEmail, $this->senderName)] : [],
         );
     }
 
