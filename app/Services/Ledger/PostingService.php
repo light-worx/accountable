@@ -9,6 +9,7 @@ use App\Models\Entity;
 use App\Models\Fund;
 use App\Models\LedgerLine;
 use App\Models\MoneyAccount;
+use App\Models\Payee;
 use App\Models\Transaction;
 use App\Models\TransactionAttachment;
 use App\Models\User;
@@ -16,11 +17,10 @@ use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use App\Models\Payee;
 
 /**
  * The ONLY place that writes to the ledger. Every posted entry is:
- *  - validated in plain language,
+ *  - validated in plain language (in the person's own language),
  *  - numbered gaplessly (R-000001 ...),
  *  - hash-chained to the one before it,
  *  - written inside a lock so two people can't collide.
@@ -44,7 +44,7 @@ class PostingService
         ?int $payeeId = null,
         array $attachments = [],
     ): Transaction {
-        $this->requireAbility($entity, $user, 'capture', 'You do not have permission to record entries.');
+        $this->requireAbility($entity, $user, 'capture', __('You do not have permission to record entries.'));
 
         $tx = $this->write(
             $entity, $user, $type,
@@ -62,11 +62,11 @@ class PostingService
     public function reverse(Transaction $original, User $user, string $reason): Transaction
     {
         $entity = Entity::findOrFail($original->entity_id);
-        $this->requireAbility($entity, $user, 'reverse', 'Only the treasurer can reverse an entry.');
+        $this->requireAbility($entity, $user, 'reverse', __('Only the treasurer can reverse an entry.'));
 
         $reason = trim($reason);
         if (mb_strlen($reason) < 5) {
-            throw new PostingException('Please say why this entry is being reversed.');
+            throw new PostingException(__('Please say why this entry is being reversed.'));
         }
 
         $lines = $original->lines()->get()->map(fn (LedgerLine $l) => [
@@ -77,6 +77,7 @@ class PostingService
             'memo' => $l->memo,
         ])->all();
 
+        // The description is stored with the entry as record data, so it stays in English.
         return $this->write(
             $entity, $user, $original->type,
             CarbonImmutable::today(),
@@ -103,15 +104,17 @@ class PostingService
 
             if ($reverses) {
                 if ($reverses->reverses_transaction_id) {
-                    throw new PostingException('A reversal cannot itself be reversed. Enter a new entry instead.');
+                    throw new PostingException(__('A reversal cannot itself be reversed. Enter a new entry instead.'));
                 }
                 if (Transaction::where('reverses_transaction_id', $reverses->id)->exists()) {
-                    throw new PostingException("{$reverses->reference} has already been reversed.");
+                    throw new PostingException(__(':reference has already been reversed.', ['reference' => $reverses->reference]));
                 }
             }
+
             if ($payeeId !== null && ! Payee::where('entity_id', $entity->id)->whereKey($payeeId)->exists()) {
-                throw new PostingException('Please choose a valid person or supplier.');
+                throw new PostingException(__('Please choose a valid person or supplier.'));
             }
+
             $this->validate($entity, $type, $date, $lines, isReversal: $reverses !== null);
 
             $last = Transaction::where('entity_id', $entity->id)->orderByDesc('seq')->first(['seq', 'hash']);
@@ -159,13 +162,13 @@ class PostingService
     private function validate(Entity $entity, TransactionType $type, CarbonImmutable $date, array $lines, bool $isReversal): void
     {
         if ($lines === []) {
-            throw new PostingException('There is nothing to record. Please enter an amount.');
+            throw new PostingException(__('There is nothing to record. Please enter an amount.'));
         }
         if ($date->isFuture()) {
-            throw new PostingException('The date cannot be in the future.');
+            throw new PostingException(__('The date cannot be in the future.'));
         }
         if ($this->periods->isClosed($entity, $date)) {
-            throw new PostingException('That month has been closed. Ask the treasurer to reopen it, or use a date in the current month.');
+            throw new PostingException(__('That month has been closed. Ask the treasurer to reopen it, or use a date in the current month.'));
         }
 
         $accounts = MoneyAccount::where('entity_id', $entity->id)->whereIn('id', array_column($lines, 'money_account_id'))->get()->keyBy('id');
@@ -175,15 +178,17 @@ class PostingService
 
         foreach ($lines as $line) {
             if ($line['amount_cents'] === 0) {
-                throw new PostingException('An amount cannot be zero.');
+                throw new PostingException(__('An amount cannot be zero.'));
             }
-            $account = $accounts[$line['money_account_id']] ?? throw new PostingException('Please choose a valid account.');
-            $fund = $funds[$line['fund_id']] ?? throw new PostingException('Please choose a valid fund.');
+            $account = $accounts[$line['money_account_id']] ?? throw new PostingException(__('Please choose a valid account.'));
+            $fund = $funds[$line['fund_id']] ?? throw new PostingException(__('Please choose a valid fund.'));
             if (! $isReversal && (! $account->is_active || ! $fund->is_active)) {
-                throw new PostingException('“' . (! $account->is_active ? $account->name : $fund->name) . '” is switched off. Please choose another.');
+                throw new PostingException(__('“:name” is switched off. Please choose another.', [
+                    'name' => ! $account->is_active ? $account->name : $fund->name,
+                ]));
             }
             if ($line['category_id'] && ! isset($categories[$line['category_id']])) {
-                throw new PostingException('Please choose a valid category.');
+                throw new PostingException(__('Please choose a valid category.'));
             }
         }
 
@@ -196,16 +201,16 @@ class PostingService
             case TransactionType::Expense:
                 $income = $type === TransactionType::Income;
                 foreach ($lines as $line) {
-                    $category = $categories[$line['category_id'] ?? 0] ?? throw new PostingException('Please choose a category for each amount.');
+                    $category = $categories[$line['category_id'] ?? 0] ?? throw new PostingException(__('Please choose a category for each amount.'));
                     $okKind = $income ? CategoryKind::Income : CategoryKind::Expense;
                     if ($category->kind !== $okKind) {
-                        throw new PostingException("“{$category->name}” cannot be used here.");
+                        throw new PostingException(__('“:name” cannot be used here.', ['name' => $category->name]));
                     }
                     if (! $category->is_active) {
-                        throw new PostingException("“{$category->name}” is switched off. Switch it on under Setup → Income & expense types, or choose another.");
+                        throw new PostingException(__('“:name” is switched off. Switch it on under Setup → Income & expense types, or choose another.', ['name' => $category->name]));
                     }
                     if (($income && $line['amount_cents'] < 0) || (! $income && $line['amount_cents'] > 0)) {
-                        throw new PostingException('Amounts must be positive.');
+                        throw new PostingException(__('Amounts must be positive.'));
                     }
                 }
                 break;
@@ -222,20 +227,22 @@ class PostingService
     private function validateTransfer(TransactionType $type, array $lines): void
     {
         if (count($lines) !== 2 || array_sum(array_column($lines, 'amount_cents')) !== 0) {
-            throw new PostingException('A transfer must take the same amount out of one place and put it into another.');
+            throw new PostingException(__('A transfer must take the same amount out of one place and put it into another.'));
         }
         if (array_filter($lines, fn ($l) => $l['category_id'])) {
-            throw new PostingException('Transfers do not use a category.');
+            throw new PostingException(__('Transfers do not use a category.'));
         }
 
         $field = $type === TransactionType::AccountTransfer ? 'money_account_id' : 'fund_id';
         $other = $type === TransactionType::AccountTransfer ? 'fund_id' : 'money_account_id';
 
         if ($lines[0][$field] === $lines[1][$field]) {
-            throw new PostingException('Please choose two different ' . ($type === TransactionType::AccountTransfer ? 'accounts' : 'funds') . '.');
+            throw new PostingException($type === TransactionType::AccountTransfer
+                ? __('Please choose two different accounts.')
+                : __('Please choose two different funds.'));
         }
         if ($lines[0][$other] !== $lines[1][$other]) {
-            throw new PostingException('A transfer can only change one thing at a time.');
+            throw new PostingException(__('A transfer can only change one thing at a time.'));
         }
     }
 
@@ -254,18 +261,20 @@ class PostingService
 
         foreach ($byAccount as $id => $delta) {
             if ($delta < 0 && ($balance = $accounts[$id]->balanceCents()) + $delta < 0) {
-                throw new PostingException(sprintf(
-                    'There is not enough money in “%s”. It has %s and this takes out %s.',
-                    $accounts[$id]->name, Money::format($balance), Money::format(-$delta)
-                ));
+                throw new PostingException(__('There is not enough money in “:account”. It has :balance and this takes out :amount.', [
+                    'account' => $accounts[$id]->name,
+                    'balance' => Money::format($balance),
+                    'amount' => Money::format(-$delta),
+                ]));
             }
         }
         foreach ($byFund as $id => $delta) {
             if ($delta < 0 && ($balance = $funds[$id]->balanceCents()) + $delta < 0) {
-                throw new PostingException(sprintf(
-                    'There is not enough in the “%s”. It has %s and this takes out %s.',
-                    $funds[$id]->name, Money::format($balance), Money::format(-$delta)
-                ));
+                throw new PostingException(__('There is not enough in the “:fund”. It has :balance and this takes out :amount.', [
+                    'fund' => $funds[$id]->name,
+                    'balance' => Money::format($balance),
+                    'amount' => Money::format(-$delta),
+                ]));
             }
         }
     }

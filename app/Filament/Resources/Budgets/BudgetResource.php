@@ -25,9 +25,13 @@ class BudgetResource extends Resource
     protected static ?string $model = Budget::class;
     protected static ?string $navigationLabel = 'Budget';
     protected static ?string $modelLabel = 'budget';
-    protected static string|UnitEnum|null $navigationGroup = 'Setup';
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedScale;
     protected static ?int $navigationSort = 25;
+
+    public static function getNavigationGroup(): ?string
+    {
+        return __('Setup');   // use __('Record') in PeriodEventResource
+    }
 
     public static function canCreate(): bool
     {

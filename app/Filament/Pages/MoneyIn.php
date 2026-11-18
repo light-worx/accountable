@@ -19,49 +19,58 @@ use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Contracts\Support\Htmlable;
 
 class MoneyIn extends EntryPage
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArrowDownCircle;
-    protected static ?string $navigationLabel = 'Money in';
-    protected static ?string $title = 'Record money received';
     protected static ?int $navigationSort = 1;
+
+    public static function getNavigationLabel(): string
+    {
+        return __('Money in');
+    }
+
+    public function getTitle(): string|Htmlable
+    {
+        return __('Record money received');
+    }
 
     public function submitLabel(): string
     {
-        return 'Save money received';
+        return __('Save money received');
     }
 
     public function form(Schema $schema): Schema
     {
         return $schema->components([
             Section::make()->schema([
-                DatePicker::make('date')->label('Date received')->required()->maxDate(today()),
-                Select::make('money_account_id')->label('Paid into')
+                DatePicker::make('date')->label(__('Date received'))->required()->maxDate(today()),
+                Select::make('money_account_id')->label(__('Paid into'))
                     ->options(fn () => static::accountOptions())->required(),
-                Select::make('payee_id')->label('Received from (optional)')
+                Select::make('payee_id')->label(__('Received from (optional)'))
                     ->options(fn () => Filament::getTenant()->payees()->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all())
                     ->searchable()
                     ->helperText(fn () => Filament::getTenant()?->type === EntityType::Circuit
-                        ? 'For assessments, choose the society that paid.'
+                        ? __('For assessments, choose the society that paid.')
                         : null)
-                    ->createOptionForm([TextInput::make('name')->label('Name')->required()->maxLength(255)])
+                    ->createOptionForm([TextInput::make('name')->label(__('Name'))->required()->maxLength(255)])
                     ->createOptionUsing(fn (array $data) => Payee::firstOrCreate([
                         'entity_id' => Filament::getTenant()->id,
                         'name' => $data['name'],
                     ])->id),
-                TextInput::make('description')->label('Description (optional)')
-                    ->placeholder('e.g. Sunday 9 Nov service')->maxLength(255),
-                Repeater::make('lines')->label('What was received?')
+                TextInput::make('description')->label(__('Description (optional)'))
+                    ->placeholder(__('e.g. Sunday 9 Nov service'))->maxLength(255),
+                Repeater::make('lines')->label(__('What was received?'))
                     ->schema([
-                        Select::make('category_id')->label('Type of income')
+                        Select::make('category_id')->label(__('Type of income'))
                             ->options(fn () => static::categoryOptions('income'))->searchable()->required(),
-                        Select::make('fund_id')->label('Fund')
+                        Select::make('fund_id')->label(__('Fund'))
                             ->options(fn () => static::fundOptions())->required(),
                         MoneyInput::rands('amount')->required()->minValue(0.01),
                     ])
                     ->columns(3)->defaultItems(1)->minItems(1)->reorderable(false)
-                    ->addActionLabel('Add another amount')
+                    ->addActionLabel(__('Add another amount'))
                     ->columnSpanFull(),
                 static::attachmentField(),
             ])->columns(2),
@@ -81,7 +90,7 @@ class MoneyIn extends EntryPage
                 && Payee::where(['entity_id' => $entity->id, 'id' => $payeeId, 'type' => PayeeType::Society->value])->exists();
 
             if ($isAssessment && ! $fromSociety) {
-                throw new PostingException('Please choose which society this assessment came from, under “Received from”. If the society is not in the list, use “Load societies” under People & suppliers.');
+                throw new PostingException(__('Please choose which society this assessment came from, under “Received from”. If the society is not in the list, use “Load societies” under People & suppliers.'));
             }
         }
 

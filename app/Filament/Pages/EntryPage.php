@@ -15,10 +15,9 @@ use Filament\Pages\Page;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
-use UnitEnum;
 
 /**
- * Shared behaviour for the three entry screens (Money In / Money Out / Move Money).
+ * Shared behaviour for the three entry screens (Money in / Money out / Move money).
  * Each screen builds its form and turns the answers into ledger lines; PostingService does the rest.
  */
 abstract class EntryPage extends Page implements HasSchemas
@@ -26,8 +25,6 @@ abstract class EntryPage extends Page implements HasSchemas
     use InteractsWithSchemas;
 
     protected string $view = 'filament.pages.entry';
-
-    protected static string|UnitEnum|null $navigationGroup = 'Record';
 
     public ?array $data = [];
 
@@ -37,6 +34,11 @@ abstract class EntryPage extends Page implements HasSchemas
     abstract protected function buildEntry(array $data, Entity $entity): array;
 
     abstract public function submitLabel(): string;
+
+    public static function getNavigationGroup(): ?string
+    {
+        return __('Record');
+    }
 
     public static function canAccess(): bool
     {
@@ -72,12 +74,12 @@ abstract class EntryPage extends Page implements HasSchemas
                 $entity, auth()->user(), $type, $data['date'], $lines, $description, $payeeId, $data['attachments'] ?? [],
             );
         } catch (PostingException $e) {
-            Notification::make()->title('Not saved')->body($e->getMessage())->danger()->persistent()->send();
+            Notification::make()->title(__('Not saved'))->body($e->getMessage())->danger()->persistent()->send();
 
             return;
         }
 
-        Notification::make()->title("Saved as {$tx->reference}")->success()->send();
+        Notification::make()->title(__('Saved as :reference', ['reference' => $tx->reference]))->success()->send();
         $this->form->fill($this->defaults());
     }
 
@@ -101,7 +103,7 @@ abstract class EntryPage extends Page implements HasSchemas
     protected static function attachmentField(): FileUpload
     {
         return FileUpload::make('attachments')
-            ->label('Photo or scan of the slip / invoice (optional)')
+            ->label(__('Photo or scan of the slip / invoice (optional)'))
             ->multiple()->maxFiles(5)->maxSize(8192)
             ->acceptedFileTypes(['application/pdf', 'image/*'])
             ->disk('local')->directory('attachments/' . Filament::getTenant()->id)->visibility('private')

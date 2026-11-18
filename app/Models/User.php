@@ -28,7 +28,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants, HasAppAu
 
     // is_admin is only ever changed from the /system area, which only administrators can open.
     // Do NOT add it to any form that ordinary users can reach.
-    protected $fillable = ['name', 'email', 'password', 'is_admin', 'is_active'];
+    protected $fillable = ['name', 'email', 'password', 'is_admin', 'is_active', 'locale'];
 
     protected $hidden = [
         'password',

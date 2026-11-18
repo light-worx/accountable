@@ -10,7 +10,11 @@ use UnitEnum;
 /** Base for the simple "Setup" lists: anyone can look, only the treasurer can add/change, nobody can delete (switch off instead). */
 abstract class SetupResource extends Resource
 {
-    protected static string|UnitEnum|null $navigationGroup = 'Setup';
+
+    public static function getNavigationGroup(): ?string
+    {
+        return __('Setup');
+    }
 
     public static function canCreate(): bool
     {

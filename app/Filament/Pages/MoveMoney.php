@@ -7,6 +7,7 @@ use App\Models\Entity;
 use App\Support\Money;
 use App\Support\MoneyInput;
 use BackedEnum;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
@@ -15,17 +16,26 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Contracts\Support\Htmlable;
 
 class MoveMoney extends EntryPage
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArrowsRightLeft;
-    protected static ?string $navigationLabel = 'Move money';
-    protected static ?string $title = 'Move money';
     protected static ?int $navigationSort = 3;
+
+    public static function getNavigationLabel(): string
+    {
+        return __('Move money');
+    }
+
+    public function getTitle(): string|Htmlable
+    {
+        return __('Move money');
+    }
 
     public function submitLabel(): string
     {
-        return 'Move the money';
+        return __('Move the money');
     }
 
     protected function defaults(): array
@@ -36,36 +46,37 @@ class MoveMoney extends EntryPage
     public function form(Schema $schema): Schema
     {
         $isAccounts = fn (Get $get) => $get('kind') === 'accounts';
+        $isFunds = fn (Get $get) => $get('kind') !== 'accounts';
 
         return $schema->components([
             Section::make()->schema([
-                Radio::make('kind')->label('What are you moving?')
+                Radio::make('kind')->label(__('What are you moving?'))
                     ->options([
-                        'accounts' => 'Money from one bank / cash account to another (e.g. cash banked)',
-                        'funds' => 'Money from one fund to another (e.g. General Fund to Building Fund)',
+                        'accounts' => __('Money from one bank / cash account to another (e.g. cash banked)'),
+                        'funds' => __('Money from one fund to another (e.g. General Fund to Building Fund)'),
                     ])->live()->required()->columnSpanFull(),
 
-                DatePicker::make('date')->required()->maxDate(today()),
+                DatePicker::make('date')->label(__('Date'))->required()->maxDate(today()),
                 MoneyInput::rands('amount')->required()->minValue(0.01),
 
                 // Between accounts
-                Select::make('from_account_id')->label('From account')
+                Select::make('from_account_id')->label(__('From account'))
                     ->options(fn () => static::accountOptions())->visible($isAccounts)->required($isAccounts),
-                Select::make('to_account_id')->label('To account')
+                Select::make('to_account_id')->label(__('To account'))
                     ->options(fn () => static::accountOptions())->visible($isAccounts)->required($isAccounts),
-                Select::make('fund_id')->label('Which fund does this money belong to?')
+                Select::make('fund_id')->label(__('Which fund does this money belong to?'))
                     ->options(fn () => static::fundOptions())->visible($isAccounts)->required($isAccounts)
-                    ->default(fn () => \Filament\Facades\Filament::getTenant()->generalFund()?->id),
+                    ->default(fn () => Filament::getTenant()->generalFund()?->id),
 
                 // Between funds
-                Select::make('from_fund_id')->label('From fund')
-                    ->options(fn () => static::fundOptions())->visible(fn (Get $get) => ! $isAccounts($get))->required(fn (Get $get) => ! $isAccounts($get)),
-                Select::make('to_fund_id')->label('To fund')
-                    ->options(fn () => static::fundOptions())->visible(fn (Get $get) => ! $isAccounts($get))->required(fn (Get $get) => ! $isAccounts($get)),
-                Select::make('money_account_id')->label('Which account is the money in?')
-                    ->options(fn () => static::accountOptions())->visible(fn (Get $get) => ! $isAccounts($get))->required(fn (Get $get) => ! $isAccounts($get)),
+                Select::make('from_fund_id')->label(__('From fund'))
+                    ->options(fn () => static::fundOptions())->visible($isFunds)->required($isFunds),
+                Select::make('to_fund_id')->label(__('To fund'))
+                    ->options(fn () => static::fundOptions())->visible($isFunds)->required($isFunds),
+                Select::make('money_account_id')->label(__('Which account is the money in?'))
+                    ->options(fn () => static::accountOptions())->visible($isFunds)->required($isFunds),
 
-                TextInput::make('description')->label('Note (optional)')->maxLength(255)->columnSpanFull(),
+                TextInput::make('description')->label(__('Note (optional)'))->maxLength(255)->columnSpanFull(),
                 static::attachmentField(),
             ])->columns(2),
         ])->statePath('data');

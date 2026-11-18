@@ -20,9 +20,13 @@ class PeriodEventResource extends Resource
     protected static ?string $model = PeriodEvent::class;
     protected static ?string $navigationLabel = 'Month-end';
     protected static ?string $modelLabel = 'month-end event';
-    protected static string|UnitEnum|null $navigationGroup = 'Record';
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedLockClosed;
     protected static ?int $navigationSort = 4;
+
+    public static function getNavigationGroup(): ?string
+    {
+        return __('Record');
+    }
 
     public static function canCreate(): bool
     {

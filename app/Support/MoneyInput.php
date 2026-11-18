@@ -7,10 +7,10 @@ use Filament\Forms\Components\TextInput;
 final class MoneyInput
 {
     /** Plain rand amount in the form state (used for entries; the service converts to cents). */
-    public static function rands(string $name, string $label = 'Amount'): TextInput
+    public static function rands(string $name, ?string $label = null): TextInput
     {
         return TextInput::make($name)
-            ->label($label)
+            ->label($label ?? __('Amount'))
             ->numeric()
             ->inputMode('decimal')
             ->step('0.01')
